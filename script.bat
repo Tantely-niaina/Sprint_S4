@@ -8,7 +8,7 @@ echo "vers chemin lib"
 set "tempLib=D:\bossy\cours_S4\Mr_naina\framework\tempLib"
 echo "vers dossier de test temporaire"
 
-set "javaPath=D:\bossy\cours_S4\Mr_naina\framework\test"
+set "javaPath=D:\bossy\cours_S4\Mr_naina\framework\framework_S4\Sprint_S4\Sprint_S4\framework"
 echo "entrain de compiler"
 
 @REM Création du dossier temporaire s'il n'existe pas
