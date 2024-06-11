@@ -1,15 +1,18 @@
-package method;
+package util;
 
 import annotations.AnnotationController;
 import annotations.Get;
+import util.ModelView;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Methode {
 
@@ -72,8 +75,8 @@ public class Methode {
             for (Method method : declaredMethods) {
                 if (method.isAnnotationPresent(Get.class)) {
                     Get getAnnotation = method.getAnnotation(Get.class);
-                    if(getAnnotation.value().equals(url)) {
-                        Mapping mapping = new Mapping(controller.getSimpleName(), method.getName());
+                    if (getAnnotation.value().equals(url)) {
+                        Mapping mapping = new Mapping(controller.getName(), method.getName());
                         hashMap.put(getAnnotation.value(), mapping);
                     }
                 }
@@ -82,6 +85,14 @@ public class Methode {
         return hashMap;
     }
 
+    public Mapping getMapping(HashMap<String, Mapping> hashMap) {
+        for (Map.Entry<String, Mapping> entry : hashMap.entrySet()) {
+            Mapping map = entry.getValue();
+            return map;
+        }
+        return null;
+}
+
     public String getUrlAfterSprint1(HttpServletRequest request) {
         // Extract the part after /sprint1
         String contextPath = request.getContextPath(); // This should be "/sprint1"
@@ -89,4 +100,56 @@ public class Methode {
         return uri.substring(contextPath.length()); // This should be "/holla"
     }
 
+    public Method getMethod(Object[] parametre, Class<?> clazz, String methodname)
+            throws ClassNotFoundException, NoSuchMethodException,
+            InvocationTargetException, InstantiationException, IllegalAccessException {
+        Method[] methods = clazz.getMethods();
+        Method targetMethod = null;
+
+         for (Method method : methods) {
+            if (method.getName().equals(methodname)) {
+                Class<?>[] parameterTypes = method.getParameterTypes();
+                if (parameterTypes.length == parametre.length) {
+                    boolean matches = true;
+                    for (int i = 0; i < parameterTypes.length; i++) {
+                        if (!parameterTypes[i].isAssignableFrom(parametre[i].getClass())) {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if (matches) {
+                        targetMethod = method;
+                        break;
+                    }
+                }
+            }
+        }
+        if (targetMethod == null) {
+            throw new NoSuchMethodException("la methode n'existe pas");
+        }
+        return targetMethod;
+    }
+
+    public Object execute(Mapping mapping, Object... parametre) throws ClassNotFoundException, NoSuchMethodException,
+            InvocationTargetException, InstantiationException, IllegalAccessException {
+        if (mapping != null) {
+            String classname = mapping.getClassName();
+            String methodName = mapping.getMethodName();
+
+            Class<?> clazz = Class.forName(classname);
+            Method method = getMethod(parametre, clazz, methodName);
+
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+
+            Object result = method.invoke(instance, parametre);
+            if (result instanceof String) {
+                return result;
+            } else if (result instanceof ModelView) {
+                return result;
+            } else {
+                System.out.println("type de retour non supportez");
+            }
+        }
+        return null;
+    }
 }
