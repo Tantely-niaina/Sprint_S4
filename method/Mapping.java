@@ -1,4 +1,4 @@
-package method;
+package util;
 
 public class Mapping {
     private String className;

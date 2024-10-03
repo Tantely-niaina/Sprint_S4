@@ -1,11 +1,13 @@
 package frameworks;
 
+import util.Mapping;
+import util.Methode;
+
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import util.*;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -14,15 +16,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 public class FrontController extends HttpServlet {
-    public HashMap<String, Mapping> mapping;
+    public HashMap<String, Mapping> hashmap;
     public List<Class<?>> controllers;
     public List<String> controllersName;
     public Methode methode;
     public String url;
-      public Object[] params;
-    public String parametre;
-    public String value;
-    public Object valeur;
+    public Object result;
 
     @Override
     public void init() throws ServletException {
@@ -30,50 +29,61 @@ public class FrontController extends HttpServlet {
         methode = new Methode();
         String packageName = getControllerPackageName();
         controllers = methode.scanControllers(packageName);
+        if (controllers.isEmpty()) {
+            throw new ServletException("No controllers found in the package 'controllers'");
+        }
         controllersName = methode.getClassName(controllers);
-          parametre = "mercie de votre attention";
-        valeur = "coucou";
-        value = "mon amie";
-        url = "/sprint.jsp";
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException, ClassNotFoundException, NoSuchMethodException,
-            InvocationTargetException, InstantiationException, IllegalAccessException {
+            throws ServletException, IOException, ClassNotFoundException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
 
-        String urlString = request.getRequestURL().toString();
-        Object result = null;
-        url = methode.getUrlAfterSprint1(request);
-      
+        //String urlString = request.getRequestURL().toString();
+        url = methode.getUrlAfterSprint(request);
+        hashmap = methode.urlMethod(controllers, url);
 
-        mapping = methode.urlMethod(controllers, url);
-        
-      
+        result = methode.execute(methode.getMapping(hashmap), request);
 
-                if (url.equals("/bonjour")) {
-            params = new Object[]{parametre};
-        } else if (url.equals("/bonsoir")) {
-            params = new Object[]{valeur, value, url};
-        }
-
-        result = methode.execute(methode.getMapping(mapping), params);
-
-        if(result instanceof String) {
-            request.setAttribute("value", result);
+        if (result instanceof String) {
+            if (methode.isJsonResponse(methode.getMapping(hashmap))) {
+                sendJsonResponse(response, (String) result);
+            } else {
+                request.setAttribute("value", result);
+                forwardToJsp(request, response);
+            }
         } else if (result instanceof ModelView) {
-            request.setAttribute("data", ((ModelView) result).getdata());
-            request.getRequestDispatcher(((ModelView) result).geturl()).forward(request, response);
+            ModelView mv = (ModelView) result;
+            if (methode.isJsonResponse(methode.getMapping(hashmap))) {
+                sendJsonResponse(response, methode.convertToJson(mv.getData()));
+            } else {
+                request.setAttribute("data", mv.getSingleValue());
+                request.getRequestDispatcher(mv.getUrl()).forward(request, response);
+            }
+        } else if (result != null) {
+            // Assume any other non-null result from a @Restapi method should be sent as JSON
+            if (methode.isJsonResponse(methode.getMapping(hashmap))) {
+                sendJsonResponse(response, methode.convertToJson(result));
+            } else {
+                throw new ServletException("Unexpected return type for non-Restapi method");
+            }
         } else {
-            throw new NoSuchMethodException("No such method found with the given name and parameter count.");
+            throw new ServletException("No result returned from controller method");
         }
+    }
 
-        
+    private void sendJsonResponse(HttpServletResponse response, String jsonContent) throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        PrintWriter out = response.getWriter();
+        out.print(jsonContent);
+        out.flush();
+    }
 
-        request.setAttribute("mapping", mapping);
-        request.setAttribute("url", urlString);
+    private void forwardToJsp(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        request.setAttribute("hashmap", hashmap);
+        request.setAttribute("url", request.getRequestURL().toString());
         request.setAttribute("controllers", controllersName);
         request.getRequestDispatcher("/index.jsp").forward(request, response);
-        
     }
 
     @Override
@@ -81,8 +91,8 @@ public class FrontController extends HttpServlet {
             throws ServletException, IOException {
         try {
             processRequest(request, response);
-        } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | InstantiationException
-                | IllegalAccessException e) {
+        } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | NoSuchMethodException |
+                 InvocationTargetException e) {
             throw new RuntimeException(e);
         }
     }
@@ -92,8 +102,8 @@ public class FrontController extends HttpServlet {
             throws ServletException, IOException {
         try {
             processRequest(request, response);
-        } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | InstantiationException
-                | IllegalAccessException e) {
+        } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | NoSuchMethodException |
+                 InvocationTargetException e) {
             throw new RuntimeException(e);
         }
     }
