@@ -1,11 +1,13 @@
 package frameworks;
 
+import annotations.Get;
 import util.Mapping;
 import util.Methode;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 
@@ -22,6 +24,9 @@ public class FrontController extends HttpServlet {
     public Methode methode;
     public String url;
     public Object result;
+
+    public  Mapping mapping;
+    public  Method method;
 
     @Override
     public void init() throws ServletException {
@@ -41,7 +46,6 @@ public class FrontController extends HttpServlet {
         //String urlString = request.getRequestURL().toString();
         url = methode.getUrlAfterSprint(request);
         hashmap = methode.urlMethod(controllers, url);
-
         result = methode.execute(methode.getMapping(hashmap), request);
 
         if (result instanceof String) {

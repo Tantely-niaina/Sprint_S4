@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.naming.CannotProceedException;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 
@@ -21,8 +22,12 @@ import annotations.AnnotationController;
 import annotations.Get;
 import annotations.Param;
 import annotations.RestApi;
+import annotations.Post;
+
 import frameworks.ModelView;
 import frameworks.MySession;
+
+import static java.lang.System.out;
 
 public class Methode {
 
@@ -83,18 +88,25 @@ public class Methode {
         for (Class<?> controller : controllers) {
             Method[] declaredMethods = controller.getDeclaredMethods();
             for (Method method : declaredMethods) {
-                if (method.isAnnotationPresent(Get.class)) {
-                    Get getAnnotation = method.getAnnotation(Get.class);
-                    if (getAnnotation.value().equals(url)) {
-                        Mapping mapping = new Mapping(controller.getName(), method.getName());
-                        hashMap.put(getAnnotation.value(), mapping);
+                if (method.isAnnotationPresent(annotations.URL.class)) {
+                    annotations.URL urlAnnotation = method.getAnnotation(annotations.URL.class);
+                    if(urlAnnotation.value().equals(url)) {
+                        String verb = "GET";
+                        out.println("Get");
+                        if (method.isAnnotationPresent(Post.class)) {
+                            verb = "POST";
+                        } else if (method.isAnnotationPresent(Get.class)) {
+                            verb = "GET";
+
+                        }
+                        Mapping mapping = new Mapping(controller.getName(), method.getName(), verb);
+                        hashMap.put(urlAnnotation.value(), mapping);
                     }
                 }
             }
         }
         return hashMap;
     }
-
     public Mapping getMapping(HashMap<String, Mapping> hashMap) {
         for (Map.Entry<String, Mapping> entry : hashMap.entrySet()) {
             return entry.getValue();
@@ -111,11 +123,13 @@ public class Methode {
 
             // Trouver la methode qui match le nom et parametres
             Method method = getMethod(clazz, mapping.getMethodName(), request);
-
+            if (!request.getMethod().equalsIgnoreCase(mapping.getVerb())){
+                throw  new ServletException("bad request");
+            }
 
             List<String> FormFieldsNames = getFieldsNamesList(request);
             Object[] parameterValues = new Object[method.getParameterCount()];
-            System.out.println(FormFieldsNames.size() + " " + method.getParameterCount());
+            out.println(FormFieldsNames.size() + " " + method.getParameterCount());
             Employe emp = new Employe();
 
             boolean empPopulated = false;
@@ -166,7 +180,7 @@ public class Methode {
                 return result;
             }
         } else {
-            System.out.println("Mapping not found");
+            out.println("Mapping not found");
         }
         return null;
     }
