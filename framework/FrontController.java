@@ -26,7 +26,6 @@ public class FrontController extends HttpServlet {
     public Object result;
 
     public  Mapping mapping;
-    public  Method method;
 
     @Override
     public void init() throws ServletException {
