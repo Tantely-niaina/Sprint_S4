@@ -1,28 +1,27 @@
 package util;
 
+import java.util.List;
+
 public class Mapping {
     private String className;
 
-    private String methodName;
+    private List<VerbMethod> verbMethods;
 
-    private String verb;
-
-    public Mapping (String className, String methodName, String verb) {
+    public Mapping (String className, List<VerbMethod> verbMethods) {
         this.className = className;
-        this.methodName = methodName;
-        this.verb = verb;
+        this.verbMethods = verbMethods;
     }
 
     public String getClassName() {
         return className;
+
     }
 
-    public String getMethodName() {
-        return methodName;
+    public List<VerbMethod> getVerbMethods() {
+        return verbMethods;
     }
 
-    public String getVerb() {
-        return verb;
+    public void setVerbMethods(List<VerbMethod> verbMethods) {
+        this.verbMethods = verbMethods;
     }
-
 }

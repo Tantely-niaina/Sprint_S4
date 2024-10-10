@@ -87,22 +87,27 @@ public class Methode {
         HashMap<String, Mapping> hashMap = new HashMap<>();
         for (Class<?> controller : controllers) {
             Method[] declaredMethods = controller.getDeclaredMethods();
+            List<VerbMethod> verbMethods = new ArrayList<>();
             for (Method method : declaredMethods) {
                 if (method.isAnnotationPresent(annotations.URL.class)) {
                     annotations.URL urlAnnotation = method.getAnnotation(annotations.URL.class);
                     if(urlAnnotation.value().equals(url)) {
-                        String verb = "GET";
-                        out.println("Get");
+                        VerbMethod verbMethod = new VerbMethod();
+                        verbMethod.setMethod(method.getName());
                         if (method.isAnnotationPresent(Post.class)) {
-                            verb = "POST";
+                            verbMethod.setVerb("POST");
                         } else if (method.isAnnotationPresent(Get.class)) {
-                            verb = "GET";
-
+                            verbMethod.setVerb("GET");
+                        } else {
+                            verbMethod.setVerb("GET"); // Default to GET if no annotation
                         }
-                        Mapping mapping = new Mapping(controller.getName(), method.getName(), verb);
-                        hashMap.put(urlAnnotation.value(), mapping);
+                        verbMethods.add(verbMethod);
                     }
                 }
+            }
+            if (!verbMethods.isEmpty()) {
+                Mapping mapping = new Mapping(controller.getName(), verbMethods);
+                hashMap.put(url, mapping);
             }
         }
         return hashMap;
@@ -121,10 +126,20 @@ public class Methode {
             String className = mapping.getClassName();
             Class<?> clazz = Class.forName(className);
 
-            // Trouver la methode qui match le nom et parametres
-            Method method = getMethod(clazz, mapping.getMethodName(), request);
-            if (!request.getMethod().equalsIgnoreCase(mapping.getVerb())){
-                throw  new ServletException("bad request");
+            // Find the method that matches the HTTP verb
+            Method method = null;
+            String requestVerb = request.getMethod();
+            VerbMethod matchingVerbMethod = null;
+            for (VerbMethod verbMethod : mapping.getVerbMethods()) {
+                if (verbMethod.getVerb().equalsIgnoreCase(requestVerb)) {
+                    method = getMethod(clazz, verbMethod.getMethod(), request);
+                    matchingVerbMethod = verbMethod;
+                    break;
+                }
+            }
+
+            if (method == null || matchingVerbMethod == null) {
+                throw new ServletException("No matching method found for HTTP verb: " + requestVerb);
             }
 
             List<String> FormFieldsNames = getFieldsNamesList(request);
@@ -138,7 +153,6 @@ public class Methode {
                 if (paramType == MySession.class) {
                     parameterValues[i] = new MySession(request.getSession());
                 } else if (i < FormFieldsNames.size()) {
-                    // String parameterName = FormFieldsNames.get(i);
                     if (FormFieldsNames.get(i).contains(".")) {
                         while (i < FormFieldsNames.size()) {
                             populateEmploye(request, FormFieldsNames.get(i), emp);
@@ -184,7 +198,6 @@ public class Methode {
         }
         return null;
     }
-
     private void populateEmploye(HttpServletRequest request, String parameterName, Employe emp)
             throws IllegalAccessException {
         Class<?> clazzemp = emp.getClass();
@@ -322,18 +335,20 @@ public class Methode {
             return false;
         }
         Class<?> clazz = Class.forName(mapping.getClassName());
-        Method method = null;
-        for (Method m : clazz.getDeclaredMethods()) {
-            if (m.getName().equals(mapping.getMethodName())) {
-                method = m;
-                break;
+
+        for (VerbMethod verbMethod : mapping.getVerbMethods()) {
+            Method method = null;
+            for (Method m : clazz.getDeclaredMethods()) {
+                if (m.getName().equals(verbMethod.getMethod())) {
+                    method = m;
+                    break;
+                }
+            }
+            if (method != null && method.isAnnotationPresent(RestApi.class)) {
+                return true;
             }
         }
-        if (method == null) {
-            throw new NoSuchMethodException(
-                    "Method " + mapping.getMethodName() + " not found in " + mapping.getClassName());
-        }
-        return method.isAnnotationPresent(RestApi.class);
-    }
 
+        return false;
+    }
 }
