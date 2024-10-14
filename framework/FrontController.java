@@ -45,8 +45,26 @@ public class FrontController extends HttpServlet {
         //String urlString = request.getRequestURL().toString();
         url = methode.getUrlAfterSprint(request);
         hashmap = methode.urlMethod(controllers, url);
-        result = methode.execute(methode.getMapping(hashmap), request);
+        mapping = methode.getMapping(hashmap);
+        if (mapping == null) {
+            throw new ServletException("No mapping found for URL: " + url);
+        }
 
+        result = methode.execute(mapping, request);
+
+        if (result instanceof String && ((String) result).startsWith("<html>")) {
+            // C'est notre réponse HTML d'erreur
+            response.setContentType("text/html");
+            response.setCharacterEncoding("UTF-8");
+            PrintWriter out = response.getWriter();
+            out.print((String) result);
+            out.flush();
+            return;
+        }
+
+        if (result == null) {
+            throw new ServletException("No result returned from controller method for URL: " + url);
+        }
         if (result instanceof String) {
             if (methode.isJsonResponse(methode.getMapping(hashmap))) {
                 sendJsonResponse(response, (String) result);
