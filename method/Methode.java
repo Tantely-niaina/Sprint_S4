@@ -125,6 +125,7 @@ public class Methode {
         if (mapping != null) {
             String className = mapping.getClassName();
             Class<?> clazz = Class.forName(className);
+            System.out.println("Executing method in class: " + className);
 
             // Find the method that matches the HTTP verb
             Method method = null;
@@ -139,12 +140,12 @@ public class Methode {
             }
 
             if (method == null || matchingVerbMethod == null) {
-                throw new ServletException("No matching method found for HTTP verb: " + requestVerb);
+                return createErrorHtml("400  method not found from : " + requestVerb);
             }
 
             List<String> FormFieldsNames = getFieldsNamesList(request);
             Object[] parameterValues = new Object[method.getParameterCount()];
-            out.println(FormFieldsNames.size() + " " + method.getParameterCount());
+            System.out.println("Form fields: " + FormFieldsNames.size() + ", Method parameters: " + method.getParameterCount());
             Employe emp = new Employe();
 
             boolean empPopulated = false;
@@ -154,11 +155,12 @@ public class Methode {
                     parameterValues[i] = new MySession(request.getSession());
                 } else if (i < FormFieldsNames.size()) {
                     if (FormFieldsNames.get(i).contains(".")) {
-                        while (i < FormFieldsNames.size()) {
+                        while (i < FormFieldsNames.size() && FormFieldsNames.get(i).contains(".")) {
                             populateEmploye(request, FormFieldsNames.get(i), emp);
                             empPopulated = true;
                             i++;
                         }
+                        i--; // Ajustement pour compenser la boucle for externe
                     } else {
                         parameterValues[i] = request.getParameter(FormFieldsNames.get(i));
                     }
@@ -177,11 +179,14 @@ public class Methode {
             Object instance = clazz.getDeclaredConstructor().newInstance();
             Object result;
 
-            if (parameterValues.length > 0) {
-                result = method.invoke(instance, parameterValues);
-            } else {
+            // Gestion des méthodes sans paramètres
+            if (method.getParameterCount() == 0) {
                 result = method.invoke(instance);
+            } else {
+                result = method.invoke(instance, parameterValues);
             }
+
+            System.out.println("Method " + method.getName() + " returned: " + (result != null ? result.toString() : "null"));
 
             if (method.isAnnotationPresent(RestApi.class)) {
                 if (result instanceof ModelView) {
@@ -194,9 +199,12 @@ public class Methode {
                 return result;
             }
         } else {
-            out.println("Mapping not found");
+            System.out.println("Mapping not found");
+            throw new ServletException("No mapping found for the requested URL");
         }
-        return null;
+    }
+    private String createErrorHtml(String message) {
+        return "<html><body><h1>Error</h1><p>" + message + "</p></body></html>";
     }
     private void populateEmploye(HttpServletRequest request, String parameterName, Employe emp)
             throws IllegalAccessException {
@@ -245,7 +253,7 @@ public class Methode {
                             formParamIndex++;
                         } else {
                             throw new IllegalArgumentException(
-                                    "Parameter annotation @Param not found for method parameter : ETU002604");
+                                    "Parameter annotation @Param not found for method parameter : ETU002736");
                         }
                     }
 
