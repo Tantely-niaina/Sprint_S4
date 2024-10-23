@@ -1,6 +1,7 @@
 package util;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -11,6 +12,7 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.servlet.http.Part;
 
 import javax.naming.CannotProceedException;
 import javax.servlet.ServletException;
@@ -121,7 +123,7 @@ public class Methode {
 
     public Object execute(Mapping mapping, HttpServletRequest request)
             throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException,
-            IllegalAccessException, ServletException {
+            IllegalAccessException, ServletException{
         if (mapping != null) {
             String className = mapping.getClassName();
             Class<?> clazz = Class.forName(className);
@@ -140,68 +142,120 @@ public class Methode {
             }
 
             if (method == null || matchingVerbMethod == null) {
-                return createErrorHtml("400  method not found from : " + requestVerb);
+                return createErrorHtml("400 method not found for: " + requestVerb);
             }
 
-            List<String> FormFieldsNames = getFieldsNamesList(request);
+            // Vérifier si c'est une requête multipart
+            boolean isMultipart = request.getContentType() != null &&
+                    request.getContentType().toLowerCase().startsWith("multipart/form-data");
+
             Object[] parameterValues = new Object[method.getParameterCount()];
-            System.out.println("Form fields: " + FormFieldsNames.size() + ", Method parameters: " + method.getParameterCount());
-            Employe emp = new Employe();
+            Parameter[] parameters = method.getParameters();
 
-            boolean empPopulated = false;
-            for (int i = 0; i < method.getParameterCount(); i++) {
-                Class<?> paramType = method.getParameterTypes()[i];
-                if (paramType == MySession.class) {
-                    parameterValues[i] = new MySession(request.getSession());
-                } else if (i < FormFieldsNames.size()) {
-                    if (FormFieldsNames.get(i).contains(".")) {
-                        while (i < FormFieldsNames.size() && FormFieldsNames.get(i).contains(".")) {
-                            populateEmploye(request, FormFieldsNames.get(i), emp);
-                            empPopulated = true;
-                            i++;
+            try {
+                if (isMultipart) {
+                    for (int i = 0; i < parameters.length; i++) {
+                        Parameter param = parameters[i];
+                        Class<?> paramType = param.getType();
+
+                        if (paramType == Part.class) {
+                            Param paramAnnotation = param.getAnnotation(Param.class);
+                            if (paramAnnotation != null) {
+                                String paramName = paramAnnotation.name();
+                                Part filePart = request.getPart(paramName);
+                                parameterValues[i] = filePart;
+                            }
                         }
-                        i--; // Ajustement pour compenser la boucle for externe
-                    } else {
-                        parameterValues[i] = request.getParameter(FormFieldsNames.get(i));
                     }
-                }
-            }
-
-            if (empPopulated) {
-                for (int i = 0; i < parameterValues.length; i++) {
-                    if (parameterValues[i] == null && method.getParameterTypes()[i] == Employe.class) {
-                        parameterValues[i] = emp;
-                        break;
-                    }
-                }
-            }
-
-            Object instance = clazz.getDeclaredConstructor().newInstance();
-            Object result;
-
-            // Gestion des méthodes sans paramètres
-            if (method.getParameterCount() == 0) {
-                result = method.invoke(instance);
-            } else {
-                result = method.invoke(instance, parameterValues);
-            }
-
-            System.out.println("Method " + method.getName() + " returned: " + (result != null ? result.toString() : "null"));
-
-            if (method.isAnnotationPresent(RestApi.class)) {
-                if (result instanceof ModelView) {
-                    ModelView mv = (ModelView) result;
-                    return convertToJson(mv.getData());
                 } else {
-                    return convertToJson(result);
+                    // Traitement des requêtes normales (non-multipart)
+                    List<String> formFieldsNames = getFieldsNamesList(request);
+                    Employe emp = new Employe();
+                    boolean empPopulated = false;
+
+                    for (int i = 0; i < parameters.length; i++) {
+                        Parameter param = parameters[i];
+                        Class<?> paramType = param.getType();
+
+                        if (paramType == MySession.class) {
+                            parameterValues[i] = new MySession(request.getSession());
+                        } else if (i < formFieldsNames.size()) {
+                            String fieldName = formFieldsNames.get(i);
+                            if (fieldName.contains(".")) {
+                                // Traitement des objets complexes (comme Employe)
+                                while (i < formFieldsNames.size() && formFieldsNames.get(i).contains(".")) {
+                                    populateEmploye(request, formFieldsNames.get(i), emp);
+                                    empPopulated = true;
+                                    i++;
+                                }
+                                i--; // Ajustement pour la boucle externe
+                            } else {
+                                // Traitement des paramètres simples
+                                parameterValues[i] = request.getParameter(fieldName);
+                            }
+                        }
+                    }
+
+                    // Assigner l'objet Employe si nécessaire
+                    if (empPopulated) {
+                        for (int i = 0; i < parameterValues.length; i++) {
+                            if (parameterValues[i] == null && parameters[i].getType() == Employe.class) {
+                                parameterValues[i] = emp;
+                                break;
+                            }
+                        }
+                    }
                 }
-            } else {
-                return result;
+
+                // Exécution de la méthode
+                Object instance = clazz.getDeclaredConstructor().newInstance();
+                Object result;
+
+                if (method.getParameterCount() == 0) {
+                    result = method.invoke(instance);
+                } else {
+                    result = method.invoke(instance, parameterValues);
+                }
+
+                // Traitement du résultat
+                if (method.isAnnotationPresent(RestApi.class)) {
+                    if (result instanceof ModelView) {
+                        ModelView mv = (ModelView) result;
+                        return convertToJson(mv.getData());
+                    } else {
+                        return convertToJson(result);
+                    }
+                } else {
+                    return result;
+                }
+
+            } catch (IOException e) {
+                System.err.println("Error processing file upload: " + e.getMessage());
+                return createErrorHtml("500 Error processing upload: " + e.getMessage());
             }
-        } else {
-            System.out.println("Mapping not found");
-            throw new ServletException("No mapping found for the requested URL");
         }
+
+        System.out.println("Mapping not found");
+        throw new ServletException("No mapping found for the requested URL");
+    }
+
+    // Méthode utilitaire pour convertir les valeurs des paramètres
+    private Object convertParameterValue(String value, Class<?> targetType) {
+        if (value == null) return null;
+
+        if (targetType == String.class) {
+            return value;
+        } else if (targetType == int.class || targetType == Integer.class) {
+            return Integer.parseInt(value);
+        } else if (targetType == long.class || targetType == Long.class) {
+            return Long.parseLong(value);
+        } else if (targetType == double.class || targetType == Double.class) {
+            return Double.parseDouble(value);
+        } else if (targetType == boolean.class || targetType == Boolean.class) {
+            return Boolean.parseBoolean(value);
+        }
+
+        return value;
     }
     private String createErrorHtml(String message) {
         return "<html><body><h1>Error</h1><p>" + message + "</p></body></html>";
@@ -227,39 +281,67 @@ public class Methode {
     private Method getMethod(Class<?> clazz, String methodName, HttpServletRequest request)
             throws NoSuchMethodException {
         Method[] methods = clazz.getMethods();
-        List<String> parameterNames = getFieldsNamesList(request);
+
+        // Vérifier si c'est une requête multipart
+        boolean isMultipart = request.getContentType() != null &&
+                request.getContentType().toLowerCase().startsWith("multipart/form-data");
 
         for (Method method : methods) {
             if (method.getName().equals(methodName)) {
-                if (paramSize(method, parameterNames)) {
-                    Parameter[] parameters = method.getParameters();
-                    boolean matches = true;
-                    int formParamIndex = 0;
+                Parameter[] parameters = method.getParameters();
 
+                // Cas spécial pour les requêtes multipart
+                if (isMultipart) {
+                    boolean hasPartParameter = false;
                     for (Parameter param : parameters) {
-                        if (param.getType() == MySession.class) {
-                            continue; // Ignorer les paramètres MySession dans la comparaison
+                        if (param.getType() == Part.class) {
+                            hasPartParameter = true;
+                            break;
                         }
+                    }
+                    if (hasPartParameter) {
+                        return method;
+                    }
+                    continue;
+                }
 
-                        Param paramAnnotation = param.getAnnotation(Param.class);
-                        if (paramAnnotation != null) {
-                            String paramName = paramAnnotation.name();
-                            if (formParamIndex >= parameterNames.size() ||
-                                    !parameterNames.get(formParamIndex).equals(paramName) &&
-                                            !parameterNames.get(formParamIndex).startsWith(paramName + ".")) {
+                // Pour les requêtes non-multipart
+                List<String> parameterNames = getFieldsNamesList(request);
+                boolean matches = true;
+                int nonSessionParamCount = 0;
+
+                // Compter les paramètres non-MySession
+                for (Parameter param : parameters) {
+                    if (param.getType() != MySession.class) {
+                        nonSessionParamCount++;
+                    }
+                }
+
+                if (parameterNames.size() != nonSessionParamCount) {
+                    continue;
+                }
+
+                int formParamIndex = 0;
+                for (Parameter param : parameters) {
+                    if (param.getType() == MySession.class) {
+                        continue;
+                    }
+
+                    Param paramAnnotation = param.getAnnotation(Param.class);
+                    if (paramAnnotation != null) {
+                        if (formParamIndex < parameterNames.size()) {
+                            String paramValue = request.getParameter(paramAnnotation.name());
+                            if (paramValue == null && paramAnnotation.required()) {
                                 matches = false;
                                 break;
                             }
                             formParamIndex++;
-                        } else {
-                            throw new IllegalArgumentException(
-                                    "Parameter annotation @Param not found for method parameter : ETU002736");
                         }
                     }
+                }
 
-                    if (matches) {
-                        return method;
-                    }
+                if (matches) {
+                    return method;
                 }
             }
         }
